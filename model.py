@@ -183,3 +183,11 @@ class Decoder(nn.Module):
 		for layer in self.layers:
 			x = layer(x, encoder_output, src_mask, tgt_mask)
 		return self.norm(x)
+
+
+class ProjectionLayer(object):
+	"""docstring for ProjectionLayer"""
+	def __init__(self, arg):
+		super(ProjectionLayer, self).__init__()
+		self.arg = arg
+		
