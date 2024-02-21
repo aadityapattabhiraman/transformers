@@ -89,8 +89,15 @@ class MultiHeadAttentionBlock(nn.Module):
 	def attention(query, key, value, mask, dropout: nn.Dropout):
 		d_k = query.shape[-1]
 
+		# (batch, h, seq_len, d_k) --> (batch, h ,seq_len, seq_len)
 		attention_scores = (query @ key.transpose(-2, -1)) / math.sqrt(d_k)
-		
+		if mask is not None:
+			attention_scores.masked_fill_(mask == 0, -1e9)
+		attention_scores = attention_scores.softmax(dim=-1) # (batch, h, seq_len, seq_len)
+		if dropout is not None:
+			attention_scores = dropout(attention_scores)
+
+		return (attention_scores @ value), attention_scores
 
 	def forward(self, q, k ,v, mask):
 		query = self.w_q(q) # (batch, seq_len, d_model) --> (batch, seq_len, d_model)
@@ -103,3 +110,9 @@ class MultiHeadAttentionBlock(nn.Module):
 		value = key.view(key.shape[0], key.shape[1], self.h, self.d_k).transpose(1, 2)
 
 		x, self.attention_scores = MultiHeadAttentionBlock.attention(query, key, value, mask, self.dropout)
+
+		# (batch, h, seq_len, d_k) --> (batch, seq_len, h, d_k) --> (batch, seq_len, d_model)
+		x = x.transpose(1, 2).contiguous().view(x.shape[0], -1, self.h * self.d_k)
+
+		# (batch, seq_len, d_model) --> (batch, seq_len, d_model)
+		return self.w_o(x)
