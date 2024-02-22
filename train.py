@@ -17,17 +17,60 @@ import warnings
 from tqdm import tqdm
 
 
+def greedy_decode(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_len, device):
+    sos_idx = tokenizer_tgt.token_to_id("[SOS]")
+    eos_idx = tokenizer_tgt.token_to_id("[EOS]")
+
+    encoder_output = model.encode(source, source_mask)
+    # Initialize the decoder input with the sos token
+    decoder_input = torch.empty(1, 1).fill_(sos_idx).type_as(source).to(device)
+    while True:
+        if decoder.size(1) == max_len:
+            break
+
+        # Build mask for the target
+        decoder_mask = causal_mask(decoder_input.size(1)).type_as(source_mask).to(device)
+
+        # Calculate the output of the decoder
+        out = model.decode(encoder_output, source_mask, decoder_input, decode_mask)
+
+        # Get the next token
+        prob = model.project(out[:,-1])
+        # Select the token with max prob
+        _, next_word = torch.max(prob, dim=1)
+        decoder_input = torch.cat([decoderr_input, torch.empty(1,1).type_as(source).fill_(next_word.item()).to(device)], dim=1)
+
+        if nex_word == eos_idx:
+            break
+    return decoder_input.squeeze(0)
+
+def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, device, print_msg, global_state, writer, num_examples=2):
+    model.eval()
+    count = 0
+
+    source_text = []
+    expected = []
+    predicted = []
+
+    with torch.no_grad():
+        for batch in validation_ds:
+            count += 1
+            encoder_input = batch["encoder_input"].to(device)
+            encoder_mask = batch["encoder_mask"].to(device)
+
+            assert encoder_input.size(0) == 1, "Batch size must be 1 for validation"
+
 def get_all_sentences(ds, lang):
     for item in ds:
         yield item["translation"][lang]
 
 def get_or_build_tokenizer(config, ds, lang):
-    tokenizer.path = Path(config["tokenizer_file"].format(lang))
+    tokenizer_path = Path(config["tokenizer_file"].format(lang))
     if not Path.exists(tokenizer_path):
         tokenizer = Tokenizer(WordLevel(unk_token="[UNK]"))
         tokenizer.pre_tokenizer = Whitespace()
         trainer = WordLevelTrainer(special_tokens=["UNK", "PAD", "SOS", "EOS"], min_frequency=2)
-        tokenizer.train_from_iterator(get_All_sentences(ds,lang), trainer=trainer)
+        tokenizer.train_from_iterator(get_all_sentences(ds,lang), trainer=trainer)
         tokenizer.save(str(tokenizer_path))
     else:
         tokenizer = Tokenizer.from_file(str(tokenizer_path))
