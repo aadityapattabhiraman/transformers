@@ -9,6 +9,8 @@ class BilingualDataset(Dataset):
 
     def __init__(self, ds, tokenizer_src, tokenizer_tgt, src_lang, tgt_lang, seq_len) -> None:
         super().__init__()
+
+        self.seq_len = seq_len
         self.ds = ds
         self.tokenizer_src = tokenizer_src
         self.tokenizer_tgt = tokenizer_tgt
@@ -22,7 +24,7 @@ class BilingualDataset(Dataset):
     def __len__(self):
         return len(self.ds)
 
-    def __getitem__(self, index: Any) -> Any:
+    def __getitem__(self, index):
         src_target_pair = self.ds[index]
         src_text = src_target_pair["translation"][self.src_lang]
         tgt_text = src_target_pair["translation"][self.tgt_lang]
@@ -78,6 +80,6 @@ class BilingualDataset(Dataset):
             "tgt_text": tgt_text
         }
 
-def causal_maks(size):
+def causal_mask(size):
     mask = torch.relu(torch.ones(1, size, size), diagonal=1).type(torch.int)
     return mask == 0
