@@ -30,7 +30,7 @@ class BilingualDataset(Dataset):
         tgt_text = src_target_pair["translation"][self.tgt_lang]
 
         enc_input_tokens = self.tokenizer_src.encode(src_text).ids
-        dec_input_tokens = self.tokenize_tgt.encode(tgt_text).ids
+        dec_input_tokens = self.tokenizer_tgt.encode(tgt_text).ids
 
         enc_num_padding_tokens = self.seq_len - len(enc_input_tokens) - 2
         dec_num_padding_tokens = self.seq_len - len(dec_input_tokens) - 1
@@ -44,17 +44,19 @@ class BilingualDataset(Dataset):
                 self.sos_token,
                 torch.Tensor(enc_input_tokens, dtype=torch.int64),
                 self.eos_token,
-                torch.Tensor([self.pad_token] * enc_num_padding_tokens, dtypr=torch.int64)
-            ]
+                torch.Tensor([self.pad_token] * enc_num_padding_tokens, dtype=torch.int64),
+            ],
+            dim=0,
         )
 
         # Add SOS to the decoder input
         decoder_input = torch.cat(
             [
                 self.sos_token,
-                torch.Tensor(dec_inpt_tokens, dtype=torch.int64),
-                torch.Tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64)
-            ]
+                torch.Tensor(dec_input_tokens, dtype=torch.int64),
+                torch.Tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
+            ],
+            dim=0,
         )
 
         # Add EOS to the label (what we expect as output from the decoder)
@@ -62,8 +64,9 @@ class BilingualDataset(Dataset):
             [
                 torch.Tensor(dec_input_tokens, dtype=torch.int64),
                 self.eos_token,
-                torch.Tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64)
-            ]
+                torch.Tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
+            ],
+            dim=0,
         )
 
         assert encoder_input.size(0) == self.seq_len
@@ -74,12 +77,12 @@ class BilingualDataset(Dataset):
             "encoder_input": encoder_input, # seq_len
             "decoder_input": decoder_input, # (seq_len)
             "encoder_mask": (encoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int(), # (1, 1, seq_len)
-            "decode_mask": (decoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int() & causal_mask(decoder_input.size(0)), # (1,seq_len) & (1, seq_len, seq_len)
+            "decoder_mask": (decoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int() & causal_mask(decoder_input.size(0)), # (1,seq_len) & (1, seq_len, seq_len)
             "label": label,
             "src_text": src_text,
-            "tgt_text": tgt_text
+            "tgt_text": tgt_text,
         }
 
 def causal_mask(size):
-    mask = torch.relu(torch.ones(1, size, size), diagonal=1).type(torch.int)
+    mask = torch.relu(torch.ones((1, size, size)), diagonal=1).type(torch.int)
     return mask == 0

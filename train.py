@@ -4,10 +4,12 @@ import torch
 import torch.nn
 from torch.utils.data import Dataset, DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
+
 from dataset import BilingualDataset, causal_mask
 from model import build_transformer
 from datasets import load_dataset
 from config import get_weights_file_path, get_config
+
 from tokenizers import Tokenizer
 from tokenizers.models import WordLevel
 from tokenizers.trainers import WordLevelTrainer
@@ -25,7 +27,7 @@ def greedy_decode(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_
     # Initialize the decoder input with the sos token
     decoder_input = torch.empty(1, 1).fill_(sos_idx).type_as(source).to(device)
     while True:
-        if decoder.size(1) == max_len:
+        if decoder_input.size(1) == max_len:
             break
 
         # Build mask for the target
@@ -38,11 +40,13 @@ def greedy_decode(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_
         prob = model.project(out[:,-1])
         # Select the token with max prob
         _, next_word = torch.max(prob, dim=1)
-        decoder_input = torch.cat([decoderr_input, torch.empty(1,1).type_as(source).fill_(next_word.item()).to(device)], dim=1)
+        decoder_input = torch.cat([decoder_input, torch.empty(1,1).type_as(source).fill_(next_word.item()).to(device)], dim=1)
 
-        if nex_word == eos_idx:
+        if next_word == eos_idx:
             break
+
     return decoder_input.squeeze(0)
+
 
 def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, device, print_msg, global_state, writer, num_examples=2):
     model.eval()
@@ -78,6 +82,7 @@ def get_all_sentences(ds, lang):
     for item in ds:
         yield item["translation"][lang]
 
+
 def get_or_build_tokenizer(config, ds, lang):
     tokenizer_path = Path(config["tokenizer_file"].format(lang))
     if not Path.exists(tokenizer_path):
@@ -90,6 +95,7 @@ def get_or_build_tokenizer(config, ds, lang):
         tokenizer = Tokenizer.from_file(str(tokenizer_path))
 
     return tokenizer
+
 
 def get_ds(config):
     ds_raw = load_dataset("ai4bharat/samanantar", f"{config['lang_tgt']}")
@@ -123,9 +129,11 @@ def get_ds(config):
 
     return train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt
 
+
 def get_model(config, vocab_src_len, vocab_tgt_len):
-    model = build_transformer(vocab_src_len, vocab_tgt_len, config["seq_len"], config["seq_len"], config["d_model"])
+    model = build_transformer(vocab_src_len, vocab_tgt_len, config["seq_len"], config["seq_len"], d_model=config["d_model"])
     return model
+
 
 def train_model(config):
     # Define the device
@@ -179,9 +187,9 @@ def train_model(config):
             optimizer.step()
             optimizer.zero_grad()
 
-            run_validation(model, val_dataloader, tokenizer_src, tokenizer_tgt, config["seq_len"], device, lambda msg: batch_iterator.write(msg), global_step, writer)
-
             global_step += 1
+
+        run_validation(model, val_dataloader, tokenizer_src, tokenizer_tgt, config["seq_len"], device, lambda msg: batch_iterator.write(msg), global_step, writer)
 
         model_filename = get_weights_file_path(config, f"{epoch:02d}")
         torch.save({
