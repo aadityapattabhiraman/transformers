@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
 import torch
-import torch.nn
+import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
+import torchtext.datasets as datasets
+from torch.optim.lr_scheduler import LambdaLR
 
 from dataset import BilingualDataset, causal_mask
 from model import build_transformer
@@ -17,6 +19,8 @@ from tokenizers.pre_tokenizers import Whitespace
 from pathlib import Path
 import warnings
 from tqdm import tqdm
+import os
+import torchmetrics
 
 
 def greedy_decode(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_len, device):
@@ -52,7 +56,16 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
     model.eval()
     count = 0
 
-    console_width = 80
+    source_texts = []
+    expected = []
+    predicted = []
+
+    try:
+        with os.popen('stty size', 'r') as console:
+            _, console_width = console.read().split()
+            console_width = int(console_width)
+    except:
+        console_width = 80
 
     with torch.no_grad():
         for batch in validation_ds:
@@ -70,17 +83,33 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
 
             # Print to the console
             print_msg("-"*console_width)
-            print_msg(f"Source: {source_text}")
-            print_msg(f"Target: {target_text}")
-            print_msg(f"Predicted: {model_out_text}")
+            print_msg(f"{f'Source: ':>12}{source_text}")
+            print_msg(f"{f'Target: ':>12}{target_text}")
+            print_msg(f"{f'Predicted: ':>12}{model_out_text}")
 
             if count == num_examples:
+                print_msg('-'*console_width)
                 break
+    if writer:
+        metric = torchmetrics.CharErrorRate()
+        cer = metric(predicted, expected)
+        writer.add_scalar("validation csr", cer, global_step)
+        writer.flush()
+
+        metric = torchmetrics.WordErrorRate()
+        wer = metric(predicted, expected)
+        writer.add_scalar("validation wer", wer, global_step)
+        writer.flush()
+
+        metric = torchmetrics.BLEUScore()
+        bleu = metric(predicted, expected)
+        writer.add_scalar("validation BLEU", bleu, global_step)
+        writer.flush()
 
 
 def get_all_sentences(ds, lang):
     for item in ds:
-        yield item["translation"][lang]
+        yield item['translation'][lang]
 
 
 def get_or_build_tokenizer(config, ds, lang):
@@ -88,7 +117,7 @@ def get_or_build_tokenizer(config, ds, lang):
     if not Path.exists(tokenizer_path):
         tokenizer = Tokenizer(WordLevel(unk_token="[UNK]"))
         tokenizer.pre_tokenizer = Whitespace()
-        trainer = WordLevelTrainer(special_tokens=["UNK", "PAD", "SOS", "EOS"], min_frequency=2)
+        trainer = WordLevelTrainer(special_tokens=["[UNK]", "[PAD]", "[SOS]", "[EOS]"], min_frequency=2)
         tokenizer.train_from_iterator(get_all_sentences(ds,lang), trainer=trainer)
         tokenizer.save(str(tokenizer_path))
     else:
@@ -98,7 +127,7 @@ def get_or_build_tokenizer(config, ds, lang):
 
 
 def get_ds(config):
-    ds_raw = load_dataset("ai4bharat/samanantar", f"{config['lang_tgt']}")
+    ds_raw = load_dataset(f"{config['datasource']}", f"{config['lang_tgt']}", split='train')
 
     # Build Tokenizer
     tokenizer_src = get_or_build_tokenizer(config, ds_raw, config["lang_src"])
@@ -140,7 +169,7 @@ def train_model(config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device {device}")
 
-    Path(config["model_folder"]).mkdir(parents=True, exist_ok=True)
+    Path(f"{config['model_folder']}").mkdir(parents=True, exist_ok=True)
 
     train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt = get_ds(config)
     model = get_model(config, tokenizer_src.get_vocab_size(), tokenizr_tgt.get_vocab_size()).to(device)
@@ -151,21 +180,25 @@ def train_model(config):
 
     initial_epoch = 0
     global_step = 0
-    if config["preload"]:
-        model_filename = get_weights_file_path(config, config["preload"])
-        print(f"Preloading model {model_filename}")
+    preload = config['preload']
+    model_filename = latest_weights_file_path(config) if preload == 'latest' else get_weights_file_path(config, preload) if preload else None
+    if model_filename:
+        print(f'Preloading model {model_filename}')
         state = torch.load(model_filename)
-        initial_epoch = state["epoch"] + 1
-        optimizer.load_state_dict(state["optimizer_state_dict"])
-        global_Step = state["global_step"]
+        model.load_state_dict(state['model_state_dict'])
+        initial_epoch = state['epoch'] + 1
+        optimizer.load_state_dict(state['optimizer_state_dict'])
+        global_step = state['global_step']
+    else:
+        print('No model to preload, starting from scratch')
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer_src.token_to_id("[PAD]"), label_smoothing=0.1).to(device)
 
     for epoch in range(initial_epoch, config["num_epochs"]):
+        torch.cuda.empty_cache()
+        model.train()
         batch_iterator = tqdm(train_dataloader, desc=f"Processing epoch {epoch:02d}")
         for batch in batch_iterator:
-            model.train()
-
             encoder_input = batch["encoder_input"].to(device)
             decoder_input = batch["decoder_input"].to(device)
             encoder_mask = batch["encoder_mask"].to(device)
@@ -178,7 +211,7 @@ def train_model(config):
             label = batch["label"].to(device)
 
             loss = loss_fn(proj_output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
-            batch_iterator.set_postfix({f"loss": f"{loss.item():6.3f}"})
+            batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
 
             writer.add_scalar("train loss", loss.item(), global_step)
             writer.flush()
