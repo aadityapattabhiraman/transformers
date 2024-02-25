@@ -42,7 +42,7 @@ class PositionalEncoding(nn.Module):
 		return self.dropout(x)
 
 
-class LayerNormailzation(nn.Module):
+class LayerNormalization(nn.Module):
 
 	def __init__(self, features:int, eps: float = 10 ** -6) -> None:
 		super().__init__()
@@ -72,7 +72,7 @@ class FeedForwardBlock(nn.Module):
 class MultiHeadAttentionBlock(nn.Module):
 
 	def __init__(self, d_model:int, h: int, dropout: float) -> None:
-		super.__init__()
+		super().__init__()
 		self.d_model = d_model
 		self.h = h
 
@@ -159,7 +159,7 @@ class Encoder(nn.Module):
 class DecoderBlock(nn.Module):
 
 	def __init__(self, features: int, self_attention_block: MultiHeadAttentionBlock, cross_attention_block: MultiHeadAttentionBlock, feed_forward_block: FeedForwardBlock, dropout: float) -> None:
-		super.__init__()
+		super().__init__()
 		self.self_attention_block = self_attention_block
 		self.cross_attention_block = cross_attention_block
 		self.feed_forward_block = feed_forward_block
@@ -174,8 +174,8 @@ class DecoderBlock(nn.Module):
 
 class Decoder(nn.Module):
 
-	def __init__(self, feature: int, layers: nn.ModuleList) -> None:
-		super.__init__()
+	def __init__(self, features: int, layers: nn.ModuleList) -> None:
+		super().__init__()
 		self.layers = layers 
 		self.norm = LayerNormalization(features)
 
@@ -198,7 +198,7 @@ class ProjectionLayer(nn.Module):
 
 class Transformer(nn.Module):
 
-	def __init__(self, encoder: Encoder, decoder: Decoder, src_embed: InputEmbeddings, tgt_embed: InputEmbeddings, src_pos: PositionalEncoding, tgt_encoding: PositionalEncoding, projection_layer: ProjectionLayer) -> None:
+	def __init__(self, encoder: Encoder, decoder: Decoder, src_embed: InputEmbeddings, tgt_embed: InputEmbeddings, src_pos: PositionalEncoding, tgt_pos: PositionalEncoding, projection_layer: ProjectionLayer) -> None:
 		super().__init__()
 		self.encoder = encoder
 		self.decoder = decoder
@@ -249,8 +249,8 @@ def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int
 		decoder_blocks.append(decoder_block)
 
 	# Create the encoder and the decoder
-	encoder = Encoder(nn.ModuleList(encoder_blocks))
-	decoder = Decoder(nn.ModuleList(decoder_blocks))
+	encoder = Encoder(d_model, nn.ModuleList(encoder_blocks))
+	decoder = Decoder(d_model, nn.ModuleList(decoder_blocks))
 
 	# Create the projection layer
 	projection_layer = ProjectionLayer(d_model, tgt_vocab_size)

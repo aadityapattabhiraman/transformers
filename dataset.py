@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 class BilingualDataset(Dataset):
 
-    def __init__(self, ds, tokenizer_src, tokenizer_tgt, src_lang, tgt_lang, seq_len) -> None:
+    def __init__(self, ds, tokenizer_src, tokenizer_tgt, src_lang, tgt_lang, seq_len):
         super().__init__()
 
         self.seq_len = seq_len
@@ -17,17 +17,18 @@ class BilingualDataset(Dataset):
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
 
-        self.sos_token = torch.Tensor([tokenizer_src.token_to_id(["[SOS]"])], dtype=torch.int64)
-        self.eos_token = torch.Tensor([tokenizer_src.token_to_id(["[EOS]"])], dtype=torcg.int64)
-        self.pad_token = torch.Tensor([tokenizer.src_token_to_id(["[PAD]"])], dtype=torch.int64)
+        self.sos_token = torch.tensor([tokenizer_tgt.token_to_id("[SOS]")], dtype=torch.int64)
+        self.eos_token = torch.tensor([tokenizer_tgt.token_to_id("[EOS]")], dtype=torch.int64)
+        self.pad_token = torch.tensor([tokenizer_tgt.token_to_id("[PAD]")], dtype=torch.int64)
 
     def __len__(self):
         return len(self.ds)
 
     def __getitem__(self, index):
         src_target_pair = self.ds[index]
-        src_text = src_target_pair["translation"][self.src_lang]
-        tgt_text = src_target_pair["translation"][self.tgt_lang]
+        # print(src_target_pair)
+        src_text = src_target_pair['src']
+        tgt_text = src_target_pair["tgt"]
 
         enc_input_tokens = self.tokenizer_src.encode(src_text).ids
         dec_input_tokens = self.tokenizer_tgt.encode(tgt_text).ids
@@ -42,9 +43,9 @@ class BilingualDataset(Dataset):
         encoder_input = torch.cat(
             [
                 self.sos_token,
-                torch.Tensor(enc_input_tokens, dtype=torch.int64),
+                torch.tensor(enc_input_tokens, dtype=torch.int64),
                 self.eos_token,
-                torch.Tensor([self.pad_token] * enc_num_padding_tokens, dtype=torch.int64),
+                torch.tensor([self.pad_token] * enc_num_padding_tokens, dtype=torch.int64),
             ],
             dim=0,
         )
@@ -53,8 +54,8 @@ class BilingualDataset(Dataset):
         decoder_input = torch.cat(
             [
                 self.sos_token,
-                torch.Tensor(dec_input_tokens, dtype=torch.int64),
-                torch.Tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
+                torch.tensor(dec_input_tokens, dtype=torch.int64),
+                torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
             ],
             dim=0,
         )
@@ -62,9 +63,9 @@ class BilingualDataset(Dataset):
         # Add EOS to the label (what we expect as output from the decoder)
         label = torch.cat(
             [
-                torch.Tensor(dec_input_tokens, dtype=torch.int64),
+                torch.tensor(dec_input_tokens, dtype=torch.int64),
                 self.eos_token,
-                torch.Tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
+                torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
             ],
             dim=0,
         )
@@ -84,5 +85,5 @@ class BilingualDataset(Dataset):
         }
 
 def causal_mask(size):
-    mask = torch.relu(torch.ones((1, size, size)), diagonal=1).type(torch.int)
+    mask = torch.triu(torch.ones((1, size, size)), diagonal=1).type(torch.int)
     return mask == 0
