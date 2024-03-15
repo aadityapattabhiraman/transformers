@@ -6,10 +6,11 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import LambdaLR
 
-from dataset import BilingualDataset, causal_mask
+import torchtext.datasets as datasets
+from dataset1 import BilingualDataset, causal_mask
 from model import build_transformer
 from datasets import load_dataset
-from config import get_weights_file_path, get_config, latest_weights_file_path
+from config1 import get_weights_file_path, get_config, latest_weights_file_path
 
 from tokenizers import Tokenizer
 from tokenizers.models import WordLevel
@@ -130,8 +131,8 @@ def get_or_build_tokenizer(config, ds, lang):
 
 
 def get_ds(config):
-    dataset = load_dataset("ai4bharat/samanantar", "ta", split="train[:40%]")
-    dataset = dataset.train_test_split(test_size=0.9)
+    dataset = load_dataset("ai4bharat/samanantar", "ta", split="train[:1%]")
+    dataset = dataset.train_test_split(test_size=0.1)
     train_ds_raw = dataset["train"]
     val_ds_raw = dataset["test"]
 

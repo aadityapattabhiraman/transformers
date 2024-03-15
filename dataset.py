@@ -26,7 +26,6 @@ class BilingualDataset(Dataset):
 
     def __getitem__(self, index):
         src_target_pair = self.ds[index]
-        # print(src_target_pair)
         src_text = src_target_pair['src']
         tgt_text = src_target_pair["tgt"]
 
